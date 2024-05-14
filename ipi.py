@@ -198,9 +198,6 @@ player_match_df = player_match_df.withColumn(
     when(col("age_as_on_match") >= 35, "Veteran").otherwise("Non-Veteran")
 )
 
-#Filter to only include players who played in match (no bench players)
-player_match_df = player_match_df.filter(col("batting_status") != "Did Not Bat")
-
 #Calculate years player has been active
 player_match_df = player_match_df.withColumn(
     "years_since_debut",
@@ -208,3 +205,155 @@ player_match_df = player_match_df.withColumn(
 )
 
 player_match_df.show()
+
+#Change to sql table for analysis
+
+ball_by_ball_df.createOrReplaceTempView("ball_by_ball")
+match_df.createOrReplaceTempView("match")
+player_df.createOrReplaceTempView("player")
+player_match_df.createOrReplaceTempView("player_match")
+team_df.createOrReplaceTempView("team")
+
+#Find top players in each season
+top_scoring_batsmen_per_season = spark.sql("""
+SELECT
+p.player_name,
+m.season_year,
+SUM(b.runs_scored) AS total_runs
+FROM ball_by_ball b
+JOIN match m ON b.match_id = m.match_id
+JOIN player_match pm ON m.match_id = pm.match_id AND b.striker = pm.player_id
+JOIN player p On p.player_id = pm.player_id
+GROUP BY p.player_name, m.season_year
+ORDER BY m.season_year, total_runs DESC
+ """)
+
+#Display which bowler is more economical
+economical_bowlers_powerplay = spark.sql("""
+SELECT
+p.player_name,
+AVG(b.runs_scored) AS avg_runs_per_ball, COUNT(b.bowler_wicket) AS total_wickets
+FROM ball_by_ball b
+JOIN player_match pm ON b.match_id = pm.match_id AND b.bowler = pm.player_id
+JOIN player p ON pm.player_id = p.player_id
+WHERE b.over_id <=6
+GROUP BY p.player_name
+HAVING COUNT(*) > 120
+ORDER BY avg_runs_per_ball, total_wickets DESC
+""")
+economical_bowlers_powerplay.show(5)
+
+#Determine win or loss of coin toss per player
+individual_toss_match = spark.sql("""
+SELECT m.match_id, m.toss_winner, m.toss_name, m.match_winner, 
+    CASE WHEN m.toss_winner = m.match_winner THEN 'Won' ELSE 'Lost' END AS match_outcome
+FROM match m
+WHERE m.toss_name IS NOT NULL
+ORDER BY m.match_id
+""")
+individual_toss_match.show(5)
+
+average_runs_in_winners = spark.sql("""
+SELECT  p.player_name, AVG(b.runs_scored) AS avg_runs_in_wins, COUNT(*) AS innings_played
+FROM ball_by_ball b
+JOIN player_match pm ON b.match_id = pm.match_id AND b.striker = pm.player_id
+JOIN player p ON pm.player_id = p.player_id
+JOIN match m ON pm.match_id = m.match_id
+WHERE m.match_winner = pm.player_team
+GROUP BY p.player_name
+ORDER BY avg_runs_in_wins DESC
+""")
+average_runs_in_winners.show(5)
+
+import matplotlib.pyplot as plt
+
+#Convert economical bowlers power play to pandas df
+economical_bowlers = economical_bowlers_powerplay.toPandas()
+
+#Visualize top econimic players
+plt.figure(figsize=(12,8))
+# Limit to look at top 10 players in plot
+top_economical_bowlers = economical_bowlers.nsmallest(10, 'avg_runs_per_ball')
+plt.bar(top_economical_bowlers['player_name'], top_economical_bowlers['avg_runs_per_ball'], color = 'red')
+plt.xlabel('Bowler Name')
+plt.ylabel('Average Runs per Ball')
+plt.title('Most Economical Bowers in Powerplay (Top 10)')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+import seaborn as sns
+#Create visualization on win/loss based on winning toss
+toss_impact = individual_toss_match.toPandas()
+
+#Create a count plot to show win/loss after win toss
+plt.figure(figsize=(10,6))
+sns.countplot(x='toss_winner', hue='match_outcome', data=toss_impact)
+plt.title('Impact of Winning Toss on Match Outcomes')
+plt.xlabel('Toss Winner')
+plt.ylabel('Number of Matches')
+plt.legend(title='Match Outcome')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+#Create average runs in winning matches 
+average_runs = average_runs_in_winners.toPandas()
+
+#Using Seaborn plot average runs in winning matches 
+plt.figure(figsize=(12,8))
+top_scorers = average_runs.nlargest(10, 'avg_runs_in_wins')
+sns.barplot(x='player_name', y ='avg_runs_in_wins', data=top_scorers)
+plt.title('Average Runs Scored in Winning Matches (Top 10 Scorers)')
+plt.xlabel('Player Name')
+plt.ylabel('Average Runs in Wins')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+#Execute SQL Query to analyze scores by venue
+scores_by_venue = spark.sql("""
+SELECT venue_name, AVG(total_runs) AS average_score, MAX(total_runs) AS highest_score
+FROM( 
+    SELECT ball_by_ball.match_id, match.venue_name, SUM(runs_scored) AS total_runs
+    FROM ball_by_ball
+    JOIN match ON ball_by_ball.match_id = match.match_id
+    GROUP BY ball_by_ball.match_id, match.venue_name
+)
+GROUP BY venue_name
+ORDER BY average_score DESC
+""")
+
+#Create scores by venue 
+scors_by_venue_pd = scores_by_venue.toPandas()
+
+#Using Seaborn plot scores by venues 
+plt.figure(figsize=(14,8))
+sns.barplot(x='average_score', y ='venue_name', data=scors_by_venue_pd)
+plt.title('Distribution of Scores by Venue')
+plt.xlabel('Average Score')
+plt.ylabel('Venue')
+plt.show()
+
+#Excute SQL Query for team performance 
+team_toss_win_performance = spark.sql("""
+SELECT team1, count(*) AS matches_played, SUM(CASE WHEN toss_winner = match_winner THEN 1 ELSE 0 END) AS wins_after_toss
+FROM match
+WHERE toss_winner = team1
+GROUP BY team1
+ORDER BY wins_after_toss DESC
+""")
+
+#Create ateam performance plot
+team_toss_win_performance_pd = team_toss_win_performance.toPandas()
+
+#Using Seaborn plot team performance
+plt.figure(figsize=(12,8))
+sns.barplot(x='wins_after_toss', y ='team1', data=team_toss_win_performance_pd)
+plt.title('Team Performance After Winning Toss')
+plt.xlabel('Wins After Winning Toss')
+plt.ylabel('Team')
+plt.show()
+
+
+
