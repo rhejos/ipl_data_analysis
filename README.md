@@ -20,7 +20,7 @@ The Indian Premier League is a cricket league. This data is made up of six seper
 - Player match
 - Team
   
- The data dictionary for these datasets can be found here. [](https://data.world/raghu543/ipl-data-till-2017/workspace/data-dictionary)
+ The data dictionary for these datasets can be found here. https://data.world/raghu543/ipl-data-till-2017/workspace/data-dictionary
 
 #### AWS S3 Bucket
 The information for this project is stored within rhea-github AWS S3 bucket.
@@ -45,13 +45,13 @@ This shows the count of matches that were won or loss if the team won the coin t
 
 #### The Top 10 scorers avergae runs for winning matches 
 
-This goes over the average runs the top scorer had for winning matches
+This goes over the average runs the top scorer had for winning matches.
 
 ![image](https://github.com/rhejos/ipl_data_analysis/assets/153791988/41ba4093-bb67-4593-b101-72a2ccca91fe)
 
 #### Distribution of Scores by Venue 
 
-This explores the coring trends based on match venues
+This explores the coring trends based on match venues.
 
 ![image](https://github.com/rhejos/ipl_data_analysis/assets/153791988/bb20a495-ec62-4c1e-86e4-8caf808bc82c)
 
