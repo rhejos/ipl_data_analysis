@@ -25,8 +25,8 @@ The Indian Premier League is a cricket league. This data is made up of six seper
 #### AWS S3 Bucket
 The information for this project is stored within rhea-github AWS S3 bucket.
 
-#### Databricks notebook
-Databricks notebook was utilized for this project.
+#### Databricks platform
+Databricks platform and juypter notebook was utilized for this project.
 
 
 ### Visualizations
